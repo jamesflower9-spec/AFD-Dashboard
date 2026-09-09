@@ -24,13 +24,14 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QPushButton, QDoubleSpinBox, QCheckBox, QGridLayout,
-    QComboBox, QSpinBox,
+    QComboBox, QSpinBox, QLineEdit,
 )
 import pyqtgraph as pg
 
 import xfoil_data as xd
 import taps
 import sensors
+from logger import RunLogger
 from serial_link import SerialLink, available_ports
 
 
@@ -100,6 +101,11 @@ class HardwareSource:
         self.buf = []
         self.latest = np.zeros(sensors.N_TAPS)
 
+    def raw(self):
+        """Averaged ADC counts, before calibration. Logged alongside Cp so a
+        run can be reprocessed if the calibration is ever revised."""
+        return self.averaged()
+
     def push(self, counts):
         if len(counts) != sensors.N_TAPS:
             return
@@ -157,6 +163,8 @@ class MainWindow(QMainWindow):
         self.sweep_dir = 1.0
 
         self.measured = []
+        self.log = None                  # RunLogger while recording
+        self.log_last = 0.0              # throttle, seconds
 
         self._build_ui()
         self._draw_references()
@@ -184,6 +192,7 @@ class MainWindow(QMainWindow):
         v.addWidget(self._conn_box())
         v.addWidget(self._motion_box())
         v.addWidget(self._flow_box())
+        v.addWidget(self._record_box())
         v.addWidget(self._readout_box())
         v.addStretch(1)
 
@@ -285,6 +294,51 @@ class MainWindow(QMainWindow):
         g.addWidget(self.lbl_tare, 4, 0, 1, 2)
 
         return box
+
+    def _record_box(self):
+        box = QGroupBox("Record")
+        g = QGridLayout(box)
+
+        g.addWidget(QLabel("Run name"), 0, 0)
+        self.edit_name = QLineEdit("run")
+        g.addWidget(self.edit_name, 0, 1)
+
+        self.btn_rec = QPushButton("Start recording")
+        self.btn_rec.clicked.connect(self._toggle_record)
+        g.addWidget(self.btn_rec, 1, 0, 1, 2)
+
+        self.lbl_rec = QLabel("Not recording")
+        self.lbl_rec.setWordWrap(True)
+        g.addWidget(self.lbl_rec, 2, 0, 1, 2)
+
+        return box
+
+    def _toggle_record(self):
+        if self.log is None:
+            self.log = RunLogger({
+                "source": self.source.label,
+                "wind_speed_ms": self.spin_wind.value(),
+                "reynolds": round(
+                    AIR_DENSITY * self.spin_wind.value()
+                    * (taps.CHORD_MM / 1000.0) / 1.81e-5),
+                "chord_mm": taps.CHORD_MM,
+                "calibration": "calibration.json",
+                "tared": self.hw.conv.tared if self.link else "n/a",
+                "avg_scans": AVG_SCANS,
+            })
+            self.btn_rec.setText("Stop and save")
+            self.lbl_rec.setText("Recording...")
+        else:
+            if len(self.log) == 0:
+                self.lbl_rec.setText("Nothing recorded")
+            else:
+                xu, xl = taps.tap_positions()
+                name = self.edit_name.text().strip() or "run"
+                raw, summ = self.log.save(name, xu, xl)
+                self.lbl_rec.setText(
+                    f"Saved {len(self.log)} samples\n{raw.name}\n{summ.name}")
+            self.log = None
+            self.btn_rec.setText("Start recording")
 
     def _readout_box(self):
         box = QGroupBox("Readout")
@@ -545,6 +599,17 @@ class MainWindow(QMainWindow):
                 self.pts_cl.setData(arr[:, 0], arr[:, 1])
         else:
             self.pts_cl.setData([], [])
+
+        # Log at 5 Hz rather than every frame. The display runs at 20 Hz but
+        # the sensor average only spans 20 scans, so faster logging would
+        # write heavily overlapping samples and inflate the file for nothing.
+        if self.log is not None:
+            now_s = now_ms / 1000.0
+            if now_s - self.log_last >= 0.2:
+                self.log_last = now_s
+                self.log.add(angle, self.moving, cp_up, cp_lo, cl_meas,
+                             raw_counts=self.hw.raw() if self.link else None)
+            self.lbl_rec.setText(f"Recording - {len(self.log)} samples")
 
         lines = [f"{self.source.label}",
                  f"CL measured   {cl_meas:+.3f}",
