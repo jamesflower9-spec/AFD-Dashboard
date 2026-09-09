@@ -9,3 +9,5 @@ assets/cfd/
 
 # Data logs
 *.csv
+build/
+dist/
