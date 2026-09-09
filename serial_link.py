@@ -3,16 +3,16 @@ serial_link.py
 
 Background thread that talks to the STM32 over the ST-LINK virtual COM port.
 
-The firmware streams status lines at 10 Hz and replies to commands. Reading
-that stream in the GUI thread would stall the interface, so it lives here and
-reaches the GUI through Qt signals, which are thread-safe by design.
+The firmware streams status at 10 Hz and replies to commands. Reading that in
+the GUI thread would stall the interface, so it lives here and reaches the GUI
+through Qt signals, which are thread-safe by design.
 
 Commands go the other way through a queue rather than being written directly,
 so only this thread ever touches the serial port.
 
-    S,<angle>,<moving>   status, unsolicited, 10 Hz
-    OK / ERR,<reason>    reply to a command
-    AFD,<version>        reply to '?'
+    S,<angle>,<moving>,<t1>..<t24>   status, unsolicited, 10 Hz
+    OK / ERR,<reason>                reply to a command
+    AFD,<version>                    reply to '?'
 """
 
 import queue
@@ -23,6 +23,7 @@ from serial.tools import list_ports
 
 
 BAUD = 115200
+N_TAPS = 24
 
 
 def available_ports():
@@ -40,11 +41,11 @@ def available_ports():
 
 class SerialLink(QThread):
 
-    status    = Signal(float, bool)   # angle, moving
-    reply     = Signal(str)           # OK / ERR,... / AFD,...
-    opened    = Signal(str)           # port name
-    closed    = Signal()
-    failed    = Signal(str)           # human-readable reason
+    status = Signal(float, bool, list)   # angle, moving, tap counts
+    reply  = Signal(str)                 # OK / ERR,... / AFD,...
+    opened = Signal(str)
+    closed = Signal()
+    failed = Signal(str)
 
     def __init__(self, port, parent=None):
         super().__init__(parent)
@@ -78,15 +79,13 @@ class SerialLink(QThread):
         buf = b""
         try:
             while self._running:
-                # outgoing
                 while True:
                     try:
                         ser.write(self._tx.get_nowait().encode("ascii"))
                     except queue.Empty:
                         break
 
-                # incoming
-                chunk = ser.read(256)
+                chunk = ser.read(1024)
                 if chunk:
                     buf += chunk
                     while b"\n" in buf:
@@ -108,15 +107,25 @@ class SerialLink(QThread):
 
         if line.startswith("S,"):
             parts = line.split(",")
-            # The firmware appends tap readings after the first two fields, so
-            # accept anything with at least angle and moving. Extending a
-            # protocol by adding fields on the end only works if the parser
-            # tolerates fields it does not yet understand.
-            if len(parts) >= 3:
+            # Angle and moving are always fields 1 and 2. Taps follow when the
+            # firmware has them. Accepting short lines keeps this working
+            # against older firmware and against the 32-channel raw mode.
+            if len(parts) < 3:
+                return
+            try:
+                angle = float(parts[1])
+                moving = parts[2] == "1"
+            except ValueError:
+                return                      # corrupt line
+
+            taps = []
+            for p in parts[3:3 + N_TAPS]:
                 try:
-                    self.status.emit(float(parts[1]), parts[2] == "1")
+                    taps.append(int(p))
                 except ValueError:
-                    pass                    # corrupt line, ignore it
+                    taps.append(0)
+
+            self.status.emit(angle, moving, taps)
             return
 
         self.reply.emit(line)

@@ -1,0 +1,31 @@
+{
+  "cp_sign": -1.0,
+  "nominal_slope": 0.37439,
+  "slopes": {
+    "0": 0.37892,
+    "1": 0.37715,
+    "2": 0.37268,
+    "3": 0.37281,
+    "4": 0.37328,
+    "5": 0.37327,
+    "6": 0.37582,
+    "7": 0.37266,
+    "8": 0.37081,
+    "9": 0.37495,
+    "10": 0.37357,
+    "11": 0.37492,
+    "12": 0.37749,
+    "13": 0.37045,
+    "14": 0.37317,
+    "15": 0.37414,
+    "16": 0.37507,
+    "17": 0.37349,
+    "18": 0.37648,
+    "19": 0.37621,
+    "20": 0.37531,
+    "21": 0.37366,
+    "22": 0.37458,
+    "23": 0.54517
+  },
+  "notes": "24-channel calibration, 6 points per channel, least-squares fit of ADC counts against applied pressure. Slope in counts per pascal; offset is not stored, it comes from the dashboard's live tare. Raw data in calibration_data.csv. Tap 23 (mux B C11) reads 45% high, consistent with a missing input divider."
+}
