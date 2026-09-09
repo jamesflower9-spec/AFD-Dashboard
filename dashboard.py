@@ -24,7 +24,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QPushButton, QDoubleSpinBox, QCheckBox, QGridLayout,
-    QComboBox, QSpinBox, QLineEdit,
+    QComboBox, QSpinBox, QLineEdit, QScrollArea,
 )
 import pyqtgraph as pg
 
@@ -186,9 +186,9 @@ class MainWindow(QMainWindow):
         outer = QHBoxLayout(central)
 
         col = QWidget()
-        col.setFixedWidth(290)
         v = QVBoxLayout(col)
         v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(6)
         v.addWidget(self._conn_box())
         v.addWidget(self._motion_box())
         v.addWidget(self._flow_box())
@@ -196,12 +196,30 @@ class MainWindow(QMainWindow):
         v.addWidget(self._readout_box())
         v.addStretch(1)
 
-        outer.addWidget(col, 0)
+        # In a plain layout Qt compresses the panels when the column is taller
+        # than the window, which squashes labels into each other. A scroll area
+        # lets them keep their natural height and scroll instead.
+        scroll = QScrollArea()
+        scroll.setWidget(col)
+        scroll.setWidgetResizable(True)
+        scroll.setFixedWidth(300)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        outer.addWidget(scroll, 0)
         outer.addWidget(self._plots(), 1)
+
+    @staticmethod
+    def _tight(g):
+        """Trim the default padding so more fits without scrolling."""
+        g.setContentsMargins(8, 6, 8, 6)
+        g.setVerticalSpacing(4)
+        g.setHorizontalSpacing(6)
+        return g
 
     def _conn_box(self):
         box = QGroupBox("Connection")
-        g = QGridLayout(box)
+        g = self._tight(QGridLayout(box))
 
         self.cmb_port = QComboBox()
         g.addWidget(self.cmb_port, 0, 0, 1, 2)
@@ -222,7 +240,7 @@ class MainWindow(QMainWindow):
 
     def _motion_box(self):
         box = QGroupBox("Angle of attack")
-        g = QGridLayout(box)
+        g = self._tight(QGridLayout(box))
         r = 0
 
         g.addWidget(QLabel("Target"), r, 0, 1, 2); r += 1
@@ -231,6 +249,9 @@ class MainWindow(QMainWindow):
         self.spin_angle.setSingleStep(0.5)
         self.spin_angle.setDecimals(2)
         self.spin_angle.setSuffix("  deg")
+        # Without this the spinbox fires on every keystroke, so typing "20"
+        # would command a move to 2 and then to 20. Arrows and jog buttons
+        # still act immediately.
         self.spin_angle.setKeyboardTracking(False)
         self.spin_angle.valueChanged.connect(self._target_changed)
         g.addWidget(self.spin_angle, r, 0, 1, 2); r += 1
@@ -272,7 +293,7 @@ class MainWindow(QMainWindow):
 
     def _flow_box(self):
         box = QGroupBox("Flow")
-        g = QGridLayout(box)
+        g = self._tight(QGridLayout(box))
 
         g.addWidget(QLabel("Wind speed"), 0, 0, 1, 2)
         self.spin_wind = QDoubleSpinBox()
@@ -297,7 +318,7 @@ class MainWindow(QMainWindow):
 
     def _record_box(self):
         box = QGroupBox("Record")
-        g = QGridLayout(box)
+        g = self._tight(QGridLayout(box))
 
         g.addWidget(QLabel("Run name"), 0, 0)
         self.edit_name = QLineEdit("run")
@@ -342,7 +363,7 @@ class MainWindow(QMainWindow):
 
     def _readout_box(self):
         box = QGroupBox("Readout")
-        g = QGridLayout(box)
+        g = self._tight(QGridLayout(box))
 
         self.lbl_actual = QLabel("0.00 deg")
         f = self.lbl_actual.font()
