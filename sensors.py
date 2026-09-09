@@ -26,8 +26,10 @@ import json
 from pathlib import Path
 import numpy as np
 
+from paths import calibration_file, beside_exe
 
-CAL_FILE = Path(__file__).parent / "calibration.json"
+
+CAL_FILE = calibration_file()
 
 N_TAPS = 24
 
@@ -92,7 +94,9 @@ def load_calibration(path=None):
 
 
 def save_calibration(cal, path=None):
-    path = Path(path) if path else CAL_FILE
+    # Always write beside the executable. Writing into the bundle's temporary
+    # extraction folder would silently discard the file on exit.
+    path = Path(path) if path else beside_exe("calibration.json")
     with open(path, "w") as f:
         json.dump(cal, f, indent=2)
 

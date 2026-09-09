@@ -18,12 +18,14 @@ Run this file directly to check the data:
 from pathlib import Path
 import numpy as np
 
+from paths import bundled
+
 
 # --- Where the data lives ---------------------------------------------------
 # Relative to this file, so the folder can be moved or packaged with PyInstaller
 # without anything breaking.
 
-XFOIL_DIR = Path(__file__).parent / "assets" / "xfoil"
+XFOIL_DIR = bundled("assets/xfoil")
 POLAR_FILE = "naca0018_Re380k.pol"
 
 # XFOIL's integral boundary-layer method cannot produce stall. Past this angle

@@ -22,8 +22,10 @@ import time
 from pathlib import Path
 import numpy as np
 
+from paths import beside_exe
 
-LOG_DIR = Path(__file__).parent / "logs"
+
+LOG_DIR = beside_exe("logs")
 
 
 class RunLogger:
