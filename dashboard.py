@@ -163,6 +163,7 @@ class MainWindow(QMainWindow):
         self.sweep_dir = 1.0
 
         self.measured = []
+        self.emulate = False             # force XFOIL data even when connected
         self.log = None                  # RunLogger while recording
         self.log_last = 0.0              # throttle, seconds
 
@@ -176,7 +177,18 @@ class MainWindow(QMainWindow):
 
     @property
     def source(self):
-        return self.hw if self.link else self.sim
+        """
+        Which sensor data the display uses.
+
+        Connection state and data source are deliberately separate. With the
+        rig connected and emulation on, the motor still moves to the commanded
+        angle and the reported position still drives the plots - only the tap
+        readings come from XFOIL instead of the sensors. That is what allows
+        the demonstrator to be shown working without flow.
+        """
+        if self.link and not self.emulate:
+            return self.hw
+        return self.sim
 
     # --- layout ---
 
@@ -314,7 +326,25 @@ class MainWindow(QMainWindow):
         self.lbl_tare.setWordWrap(True)
         g.addWidget(self.lbl_tare, 4, 0, 1, 2)
 
+        self.btn_emulate = QPushButton("Emulation mode: off")
+        self.btn_emulate.setCheckable(True)
+        self.btn_emulate.toggled.connect(self._toggle_emulate)
+        g.addWidget(self.btn_emulate, 5, 0, 1, 2)
+
+        self.lbl_emulate = QLabel("Tap readings from sensors")
+        self.lbl_emulate.setWordWrap(True)
+        g.addWidget(self.lbl_emulate, 6, 0, 1, 2)
+
         return box
+
+    def _toggle_emulate(self, on):
+        self.emulate = on
+        self.btn_emulate.setText(
+            "Emulation mode: ON" if on else "Emulation mode: off")
+        self.lbl_emulate.setText(
+            "Tap readings from XFOIL. The motor still moves and the angle "
+            "is still measured." if on else
+            "Tap readings from sensors")
 
     def _record_box(self):
         box = QGroupBox("Record")
@@ -396,6 +426,11 @@ class MainWindow(QMainWindow):
         self.p_cp.invertY(True)
         self.p_cp.showGrid(x=True, y=True, alpha=0.3)
         self.p_cp.setXRange(-0.02, 1.02)
+        # x/c is bounded by definition, so lock it. Otherwise pyqtgraph
+        # re-ranges on the steep leading-edge gradient at high angles and
+        # squashes the airfoil into a fraction of the plot width.
+        self.p_cp.setLimits(xMin=-0.05, xMax=1.05)
+        self.p_cp.disableAutoRange(axis='x')
         self.p_cp.addLegend(offset=(-10, 10))
         v.addWidget(self.p_cp, 3)
 
@@ -636,7 +671,7 @@ class MainWindow(QMainWindow):
                  f"CL measured   {cl_meas:+.3f}",
                  f"CL XFOIL      {cl_ref:+.3f}"]
 
-        if self.link and not self.hw.conv.tared:
+        if self.link and not self.emulate and not self.hw.conv.tared:
             lines.append("\nNot tared - readings are absolute, not "
                          "differential. Tare with the wind off.")
         if abs(angle) > xd.VALID_ALPHA:
