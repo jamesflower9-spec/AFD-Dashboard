@@ -36,8 +36,13 @@ def check_sources():
     if not (HERE / "calibration.json").exists():
         problems.append("calibration.json is missing")
 
+    cfd = HERE / "assets" / "cfd"
+    if not cfd.exists() or not list(cfd.glob("*.mp4")):
+        problems.append("no .mp4 in assets/cfd - the video panel will show "
+                        "a placeholder")
+
     for f in ("dashboard.py", "sensors.py", "taps.py", "xfoil_data.py",
-              "serial_link.py", "logger.py", "paths.py"):
+              "serial_link.py", "logger.py", "paths.py", "cfd_video.py"):
         if not (HERE / f).exists():
             problems.append(f"{f} is missing")
 

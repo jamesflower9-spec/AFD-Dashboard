@@ -24,14 +24,17 @@ a = Analysis(
     # (source, destination inside the bundle)
     datas=[
         ('assets/xfoil', 'assets/xfoil'),   # polar and 41 Cp files
+        ('assets/cfd', 'assets/cfd'),       # CFD flow visualisation clip
         ('calibration.json', '.'),          # default, overridden by an
                                             # external copy if one exists
     ],
 
     # PyInstaller finds most imports by scanning, but pyqtgraph loads parts of
-    # itself dynamically and numpy's Qt bindings are picked at runtime, so
-    # these are named explicitly.
+    # itself dynamically and the Qt multimedia backend is resolved at runtime,
+    # so these are named explicitly.
     hiddenimports=[
+        'PySide6.QtMultimedia',
+        'PySide6.QtMultimediaWidgets',
         'pyqtgraph',
         'pyqtgraph.graphicsItems',
         'pyqtgraph.widgets',
@@ -45,14 +48,14 @@ a = Analysis(
     runtime_hooks=[],
 
     # PySide6 ships a great deal that a plotting dashboard never touches.
-    # Excluding it cuts the build from roughly 300 MB to under 100 MB.
+    # Excluding it cuts the build substantially. QtQuick and QtQml are NOT
+    # excluded - the media backend uses them internally, and excluding them
+    # gives a build that runs from source but fails as an executable.
     excludes=[
         'PySide6.QtWebEngineCore',
         'PySide6.QtWebEngineWidgets',
         'PySide6.Qt3DCore',
         'PySide6.Qt3DRender',
-        'PySide6.QtQuick',
-        'PySide6.QtQml',
         'PySide6.QtDesigner',
         'PySide6.QtBluetooth',
         'PySide6.QtNfc',

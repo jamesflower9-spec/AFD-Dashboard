@@ -4,7 +4,7 @@ __pycache__/
 *.log
 
 # Ansys videos - too large for git, keep them local
-assets/cfd/
+
 *.mp4
 
 # Data logs

@@ -32,6 +32,7 @@ import xfoil_data as xd
 import taps
 import sensors
 from logger import RunLogger
+from cfd_video import CfdVideoPanel
 from serial_link import SerialLink, available_ports
 
 
@@ -53,6 +54,11 @@ AIR_DENSITY = 1.225
 # random part by root N; 20 at 10 Hz is two seconds of data, which is a
 # reasonable trade against watching the rig move.
 AVG_SCANS = 20
+
+# CL is bounded by the physics: a NACA 0018 at Re 380 000 will not exceed
+# about 1.2 either way. Locking the axis keeps the reference curve readable
+# when an untared or faulty channel throws a single wild point.
+CL_Y_LIMIT = 1.6
 
 
 # --- Sensor data sources ----------------------------------------------------
@@ -432,14 +438,29 @@ class MainWindow(QMainWindow):
         self.p_cp.setLimits(xMin=-0.05, xMax=1.05)
         self.p_cp.disableAutoRange(axis='x')
         self.p_cp.addLegend(offset=(-10, 10))
-        v.addWidget(self.p_cp, 3)
+        v.addWidget(self.p_cp, 4)
 
         self.p_cl = pg.PlotWidget()
         self.p_cl.setLabel("bottom", "Angle of attack (deg)")
         self.p_cl.setLabel("left", "CL")
         self.p_cl.showGrid(x=True, y=True, alpha=0.3)
+        # Both axes locked. The rig is clamped to +-20 degrees and CL is
+        # bounded by the physics, so nothing plotted here can legitimately
+        # leave this window. Leaving auto-range on meant the fixed-pixel-width
+        # annotation dragged the x-axis out to +-50 whenever the plot got
+        # short, and one bad channel could flatten the whole reference curve.
         self.p_cl.setXRange(-21, 21)
-        v.addWidget(self.p_cl, 2)
+        self.p_cl.setYRange(-CL_Y_LIMIT, CL_Y_LIMIT)
+        self.p_cl.setLimits(xMin=-24, xMax=24,
+                            yMin=-CL_Y_LIMIT * 1.2, yMax=CL_Y_LIMIT * 1.2)
+        self.p_cl.disableAutoRange()
+        v.addWidget(self.p_cl, 3)
+
+        # Stretch 0: the panel caps its own height in cfd_video.py, so it
+        # takes its size hint and the plots share everything else. Give it a
+        # stretch factor and it competes with them again.
+        self.cfd = CfdVideoPanel()
+        v.addWidget(self.cfd, 0)
 
         return holder
 
@@ -460,10 +481,14 @@ class MainWindow(QMainWindow):
             if side.any():
                 self.p_cl.plot(a[side], cl[side], pen=PEN_REF_BAD)
 
+        # ignoreBounds: a TextItem is sized in pixels, not data units, so
+        # auto-range tries to fit its pixel width into the view and widens the
+        # x-axis when the plot is short. Excluding it from the bounds
+        # calculation is the fix even with auto-range off.
         note = pg.TextItem("XFOIL cannot stall - dotted region is not physical",
                            color="#999", anchor=(0.5, 0))
-        note.setPos(0, cl.min())
-        self.p_cl.addItem(note)
+        note.setPos(0, -CL_Y_LIMIT * 0.92)
+        self.p_cl.addItem(note, ignoreBounds=True)
 
         self.pts_cl = self.p_cl.plot(
             [], [], pen=None, symbol="o", symbolSize=6, symbolBrush=COL_MEAS)
@@ -667,6 +692,8 @@ class MainWindow(QMainWindow):
                              raw_counts=self.hw.raw() if self.link else None)
             self.lbl_rec.setText(f"Recording - {len(self.log)} samples")
 
+        self.cfd.show_angle(angle, now_ms)
+
         lines = [f"{self.source.label}",
                  f"CL measured   {cl_meas:+.3f}",
                  f"CL XFOIL      {cl_ref:+.3f}"]
@@ -680,6 +707,7 @@ class MainWindow(QMainWindow):
         self.lbl_cl.setText("\n".join(lines))
 
     def closeEvent(self, ev):
+        self.cfd.stop()
         if self.link:
             self.link.stop()
             self.link.wait(1000)
